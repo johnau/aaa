@@ -9,7 +9,7 @@ BACKGROUND_COLOR = (50, 50, 50)
 PLANET_DEFAULT_DENSITY = 0.005
 PLANET_MAX_DISTANCE = 3000 #distance an object can get away from the center of the screen
 
-DELTA_T = 1 #simulation time between frames
+DELTA_T = 0.1 #simulation time between frames
 
 PLANET_MIN_RADIUS = 10
 PLANET_MAX_RADIUS = 500

@@ -125,13 +125,8 @@ class CelestialObject(SpriteEntity):
         # Update rect position from actual position
         self.rect.center = (int(self.pos.x), int(self.pos.y))
 
-        # Update rect position based on world offset
-        wx = self.rect.center[0] + int(self.world_offset.x)
-        wy = self.rect.center[1] + int(self.world_offset.y)
-        center_in_world = (wx, wy)
-        self.rect.center = center_in_world
-
         # Update image + rect (but not radius?) for zoom
+        zoom_perc = 1
         if self.world_offset.z != 0:
             # Calc new drawing diameter
             zoom_perc = (self.world_offset.z+100)/100
@@ -149,6 +144,14 @@ class CelestialObject(SpriteEntity):
                     self.image = surf
 
                 self.rect = self.image.get_rect(center = (self.rect.center))
+
+        # Update rect position based on world offset
+        wx = zoom_perc*(self.rect.center[0] + int(self.world_offset.x))
+        wy = zoom_perc*(self.rect.center[1] + int(self.world_offset.y))
+        center_in_world = (wx, wy)
+        self.rect.center = center_in_world
+
+
     ###
     ### Private functions 
     ###
