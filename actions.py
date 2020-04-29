@@ -56,6 +56,8 @@ class ActionContainer:
                         q = wact()
                     if q is not None:
                         q()
+                if not self._queued:
+                    print("Queue cleared")
 
     def add(self, func, weak=True, once=False):
         if self._blocked: # Avoid modifiying the list while it's being iterated

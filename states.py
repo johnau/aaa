@@ -1,5 +1,5 @@
 import pygame
-from pygame.locals import MOUSEBUTTONDOWN, MOUSEBUTTONUP, KEYDOWN, MOUSEMOTION, K_SPACE
+from pygame.locals import MOUSEBUTTONDOWN, MOUSEBUTTONUP, KEYDOWN, MOUSEMOTION, K_SPACE, K_LEFT, K_RIGHT, K_UP, K_DOWN
 import glm
 from glm import vec2, vec3
 import math
@@ -7,23 +7,11 @@ import math
 from constants import BACKGROUND_COLOR
 from objects import CelestialObject, VelocityArrow
 from inputs import Inputs, Button
+from scene import CelestialScene
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from main import App
-
-class Camera():
-    def __init__(self):
-        self.fov = 90
-        self.position = glm.vec3(0)
-        self.tilt = 0
-        self.yaw = 0
-
-class Scene():
-    def __init__(self):
-        self.background = BACKGROUND_COLOR
-        self.content = pygame.sprite.RenderUpdates()
-        self.camera = Camera()
 
 class State:
     """
@@ -37,21 +25,21 @@ class State:
         self.suspended = False
         self.terminated = False
 
-        self.scene = Scene()
+        self.scene = None
 
         if kwargs:
-            raise ValueError("Some kwargs not consumed: {kwargs}")
+            raise ValueError(f"Some kwargs not consumed: {kwargs}")
 
     def update(self, delta_time):
-        self.scene.content.update()
+        self.scene.update(delta_time)
 
     @property
     def scene_bg(self):
         return self.scene.background
 
-    @property
-    def sprites(self):
-        return self.scene.content
+    # @property
+    # def sprites(self):
+    #     return self.scene.content
 
 class MenuState(State):
     """
@@ -69,13 +57,15 @@ class DrawState(State):
     """
     def __init__(self, app, **kwargs):
         super().__init__(app, **kwargs)
-
-        self.__input_fns = {}
+        
+        self.scene = CelestialScene(app)
+        
+        self.__static_input_funcs = []
+        self.__dynamic_input_funcs = {}
         self.__build_inputs()
 
         self.curr_celestial = None
         self.curr_velo_arrow = None
-        self.celest_objs = pygame.sprite.Group()
 
         self.paused = False
 
@@ -84,14 +74,41 @@ class DrawState(State):
         Private function to bind inputs to functions
         """
         inputs = Inputs()
+        
         inputs.register("new_object", Button(MOUSEBUTTONDOWN, 1))
-        inputs.register("kill_all_objects", Button(KEYDOWN, K_SPACE))
         inputs.register("update", Button(MOUSEMOTION, 0))
+        inputs.register("kill_all_objects", Button(KEYDOWN, K_SPACE))
+
+        inputs.register("mleft", Button(KEYDOWN, K_LEFT))
+        inputs.register("mright", Button(KEYDOWN, K_RIGHT))
+        inputs.register("mup", Button(KEYDOWN, K_UP))
+        inputs.register("mdown", Button(KEYDOWN, K_DOWN))
+        inputs.register("zoomin", Button(MOUSEBUTTONDOWN, 4))
+        inputs.register("zoomout", Button(MOUSEBUTTONDOWN, 5))
+
         self.app.inputs = inputs
 
         # Store functions to maintain weakrefs
-        self.__input_fns["temp"] = self.app.inputs.inputs["new_object"].on_press(self.__new_object_stage1)
-        self.__input_fns["permanent"] = self.app.inputs.inputs["kill_all_objects"].on_press(self.__kill_all_objects)
+        self.__dynamic_input_funcs["temp"] = self.app.inputs.inputs["new_object"].on_press(self.__new_object_stage1)
+
+        # Add all the inputs that do not change
+        #
+        #
+        # TODO: Needs a restructure so not referring down to scene
+        #
+        #
+        self.__static_input_funcs.append(self.app.inputs.inputs["kill_all_objects"].on_press(self.scene.kill_all_objects))
+        # self.__static_input_funcs.append(self.app.inputs.inputs["kill_all_objects"].on_press(self.__reset_new_object_stage))
+        self.__static_input_funcs.append(self.app.inputs.inputs["mleft"].on_press_repeat(self.scene.move_cam_left, 0))
+        self.__static_input_funcs.append(self.app.inputs.inputs["mright"].on_press_repeat(self.scene.move_cam_right, 0))
+        self.__static_input_funcs.append(self.app.inputs.inputs["mup"].on_press_repeat(self.scene.move_cam_up, 0))
+        self.__static_input_funcs.append(self.app.inputs.inputs["mdown"].on_press_repeat(self.scene.move_cam_down, 0))
+        self.__static_input_funcs.append(self.app.inputs.inputs["zoomout"].on_press(self.scene.move_cam_out))
+        self.__static_input_funcs.append(self.app.inputs.inputs["zoomin"].on_press(self.scene.move_cam_in))
+
+    def __reset_new_object_stage(self):
+        self.__dynamic_input_funcs["temp"] = self.app.inputs.inputs["new_object"].on_press(self.__new_object_stage1)
+        self.__dynamic_input_funcs["temp2"] = None
 
     def __new_object_stage1(self):
         """
@@ -100,13 +117,11 @@ class DrawState(State):
         if not self.curr_celestial:
             self.paused = True
             # Replace functions for next stage
-            self.__input_fns["temp"] = self.app.inputs.inputs["new_object"].on_press_repeat(self.__new_object_stage1_cont, 0)
-            self.__input_fns["temp2"] = self.app.inputs.inputs["new_object"].on_release(self.__new_object_stage2)
+            self.__dynamic_input_funcs["temp"] = self.app.inputs.inputs["new_object"].on_press_repeat(self.__new_object_stage1_cont, 0)
+            self.__dynamic_input_funcs["temp2"] = self.app.inputs.inputs["new_object"].on_release(self.__new_object_stage2)
 
             center = pygame.mouse.get_pos()
-            self.curr_celestial = CelestialObject(self.celest_objs, center) #set radius to 0 so the initializer will set PLANET_MIN_RADIUS
-            self.celest_objs.add(self.curr_celestial)
-            self.scene.content.add(self.curr_celestial)
+            self.curr_celestial = CelestialObject(center) #set radius to 0 so the initializer will set PLANET_MIN_RADIUS
     
     def __new_object_stage1_cont(self):
         """
@@ -125,8 +140,8 @@ class DrawState(State):
         """
         if self.curr_celestial:
             # Replace functions for next stage
-            self.__input_fns["temp"] = self.app.inputs.inputs["update"].always(self.__new_object_stage2_cont)
-            self.__input_fns["temp2"] = self.app.inputs.inputs["new_object"].on_press(self.__new_object_stage3)
+            self.__dynamic_input_funcs["temp"] = self.app.inputs.inputs["update"].always(self.__new_object_stage2_cont)
+            self.__dynamic_input_funcs["temp2"] = self.app.inputs.inputs["new_object"].on_press(self.__new_object_stage3)
             
             center = self.curr_celestial.rect.center
             center_v = vec3(center[0], center[1], 0)
@@ -137,6 +152,7 @@ class DrawState(State):
 
             center = self.curr_celestial.rect.center
             self.curr_velo_arrow = VelocityArrow(center)
+            # self.scene.transient_objs.append(self.curr_velo_arrow)
 
     def __new_object_stage2_cont(self):
         """
@@ -151,31 +167,38 @@ class DrawState(State):
         """          
         if self.curr_celestial and self.curr_velo_arrow:
             # Replace functions to start over
-            self.__input_fns["temp"] = self.app.inputs.inputs["new_object"].on_press(self.__new_object_stage1)            
-            self.__input_fns["temp2"] = None
+            self.__dynamic_input_funcs["temp"] = self.app.inputs.inputs["new_object"].on_press(self.__new_object_stage1)            
+            self.__dynamic_input_funcs["temp2"] = None
 
             vc = self.curr_velo_arrow.velocity_component
             vel = glm.vec3(vc.x, -vc.y, 0)
-            self.curr_celestial.set_velocity(vel)
+            self.curr_celestial.velocity = vel
+
+            # Add celestial to the scene with add_new_celestial function to have world_offset applied
+            self.scene.add_new_celestial(self.curr_celestial)
 
             #Clean up
             self.curr_celestial = None # completed drawing the celestial
+            self.curr_velo_arrow.dead = True
             self.curr_velo_arrow = None
             self.paused = False
 
-
-    def __kill_all_objects(self):
-        """
-        Private function to kill all objects
-        """
-        for o in self.celest_objs:
-            o.kill()
-
     def update(self, delta_time):
         if not self.paused:
-            self.celest_objs.update(delta_time)
+            # Update the current celestial being drawn
+            if self.curr_celestial:
+                self.curr_celestial.update(delta_time)
+
+            # Update the scene
+            self.scene.update(delta_time)
 
     def draw(self):
-        cvr = self.curr_velo_arrow
-        if cvr:
-            pygame.draw.line(self.app.screen, cvr.color, (cvr.start.x, cvr.start.y), (cvr.end.x, cvr.end.y), 2)
+        # Blit currently drawing celestial
+        if self.curr_celestial:
+            self.app.screen.blit(self.curr_celestial.image, (self.curr_celestial.rect.x, self.curr_celestial.rect.y))
+
+        if self.curr_velo_arrow:
+            self.curr_velo_arrow.draw(self.app.screen)
+
+        # Draw teh scene
+        self.scene.draw(self.app.screen)
