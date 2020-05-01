@@ -12,7 +12,9 @@ PLANET_MAX_DISTANCE = 3000 #distance an object can get away from the center of t
 DELTA_T = 0.1 #simulation time between frames
 
 PLANET_MIN_RADIUS = 10
-PLANET_MAX_RADIUS = 500
+PLANET_MAX_RADIUS = 200
+
+REALITY_MULTI = 50
 
 ARROW_TO_VEL_RATIO = 0.025 #how many pixels/frame a body gets for each pixel of the arrow length
 ARROW_TO_ACC_RATIO = 0.0005
@@ -30,4 +32,9 @@ ARROW_COLOR_VEL = (50, 130, 200)
 ARROW_COLOR_ACC = (200, 0, 0)
 
 CAM_MOVE_SPEED = 20
-CAM_ZOOM_AMOUNT = 10
+CAM_ZOOM_AMOUNT = 5
+ZOOM_MIN = -95
+ZOOM_MAX = 500
+
+TYPE_VEL = "vel"
+TYPE_ACCEL = "accel"

@@ -20,8 +20,6 @@ class App():
         # Create screen
         self.__screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 
-
-
         # Main app font
         self.font = pygame.font.SysFont("Arial", 16, False, False)
 
@@ -110,9 +108,6 @@ class App():
         bg_color = self.__state.scene_bg
         self.__screen.fill(bg_color)
 
-        # sprite_group = self.__state.sprites
-        # sprite_group.draw(self.__screen)
-
         # Call .draw() func of state
         self.__state.draw() # For transient drawing to the screen, (arrows)
         
@@ -130,7 +125,6 @@ class App():
         rtxt = self.font.render(txt, False, pygame.Color('black'))
         rsiz = self.font.size(txt)
         self.__screen.blit(rtxt, (SCREEN_WIDTH-rsiz[0]-5, 5))     
-
 
 app = App('draw')   # Start app in "draw" state, default is menu but no menu yet
 app.run()

@@ -1,6 +1,7 @@
 import pygame
 import glm
-from glm import vec2, vec3
+from glm import vec2, vec3, vec4, mat4
+
 import math
 
 from constants import *
@@ -25,6 +26,7 @@ class SpriteEntity(pygame.sprite.Sprite):
 class CelestialObject(SpriteEntity):
     def __init__(self, center, **kwargs):
         super().__init__()   
+        self.__id = '0'
 
         self.neighbours = pygame.sprite.Group()
 
@@ -55,6 +57,14 @@ class CelestialObject(SpriteEntity):
     ###
 
     @property
+    def id(self):
+        return self.__id
+
+    @id.setter
+    def id(self, id):
+        self.__id = id
+
+    @property
     def radius(self):
         """
         Getter for radius
@@ -80,6 +90,10 @@ class CelestialObject(SpriteEntity):
         self.__zero_image = self.image.convert_alpha()
 
     @property
+    def acceleration(self):
+        return self.acc
+
+    @property
     def velocity(self):
         """
         Getter for velocity
@@ -87,14 +101,19 @@ class CelestialObject(SpriteEntity):
         return self.vel
 
     @velocity.setter
-    def velocity(self, vel : vec3):
+    def velocity(self, vel : vec3, use_actual_value = False):
         """
         Setter for velocity
         - Takes the length of an arrow and sets the velocity proportional to it.
         """
-        self.vel.x = vel.x * ARROW_TO_VEL_RATIO
-        self.vel.y = vel.y * ARROW_TO_VEL_RATIO
-        self.vel.z = 0
+        if use_actual_value:
+            self.vel.x = vel.x
+            self.vel.y = vel.y
+            self.vel.z = 0
+        else:
+            self.vel.x = vel.x * ARROW_TO_VEL_RATIO
+            self.vel.y = vel.y * ARROW_TO_VEL_RATIO
+            self.vel.z = 0
 
     @property
     def position(self):
@@ -126,17 +145,21 @@ class CelestialObject(SpriteEntity):
         self.rect.center = (int(self.pos.x), int(self.pos.y))
 
         # Update image + rect (but not radius?) for zoom
-        zoom_perc = 1
-        if self.world_offset.z != 0:
+        zoom_factor = 1
+        if self.world_offset.z == 0:
+            self.image = self.__zero_image.convert_alpha()
+            self.rect = self.image.get_rect(center = (self.rect.center))
+        else:
             # Calc new drawing diameter
-            zoom_perc = (self.world_offset.z+100)/100
-            draw_diam = int(self.__radius*zoom_perc)
+            zoom_factor = (self.world_offset.z+100)/100
+            draw_diam = int(self.__radius*2*zoom_factor)
             
             # Check if we need to scale
             if draw_diam != self.rect.width:
                 # Check if we even need to show the body anymore
                 if draw_diam > 0:
                     new_size = [draw_diam]*2
+                    print(f"Zoom factor: {zoom_factor} Drawing to new size {new_size} from {self.rect.width},{self.rect.height}")
                     self.image = pygame.transform.scale(self.__zero_image, new_size)
                 else:
                     surf = pygame.Surface((1,1)).convert_alpha()
@@ -146,8 +169,8 @@ class CelestialObject(SpriteEntity):
                 self.rect = self.image.get_rect(center = (self.rect.center))
 
         # Update rect position based on world offset
-        wx = zoom_perc*(self.rect.center[0] + int(self.world_offset.x))
-        wy = zoom_perc*(self.rect.center[1] + int(self.world_offset.y))
+        wx = zoom_factor*(self.rect.center[0] + int(self.world_offset.x))
+        wy = zoom_factor*(self.rect.center[1] + int(self.world_offset.y))
         center_in_world = (wx, wy)
         self.rect.center = center_in_world
 
@@ -221,18 +244,28 @@ class TransientDrawEntity():
         pass
 
 class VelocityArrow(TransientDrawEntity):
-    component = vec3(0)
-    length = 0.0
-    angle = 0.0
 
-    def __init__(self, start, **kwargs):
-        self.start = vec3(start[0], start[1], 0)
-        self.end = vec3(start[0]+1, start[1]+1, 0)
+    def __init__(self, start, parent : CelestialObject = None, **kwargs):
+        super().__init__()
+
+        self.parent : CelestialObject = parent
+        
+        if isinstance(start, tuple):
+            self.start = vec3(start[0], start[1], 0)
+        elif isinstance(start, vec3):
+            self.start = start
+
+        self.end = vec3(self.start.x+1, self.start.y+1, 0)
 
         self.color = kwargs.pop("color", ARROW_COLOR_VEL)
         self.thickness = kwargs.pop("thickness", ARROW_HALF_THICKNESS)
         self.cap_angle = kwargs.pop("cap_angle", ARROW_CAP_ANGLE)
         self.cap_length = kwargs.pop("cap_length", ARROW_CAP_LENGTH)
+        self.indcator_type = kwargs.pop("indicator_type", None)
+
+        self.component = vec3(0)
+        self.length = 0.0
+        self.angle = 0.0
 
     @property
     def arrow_end(self):
@@ -254,19 +287,83 @@ class VelocityArrow(TransientDrawEntity):
 
     @property
     def velocity_component(self) -> vec3:
-        self.angle = math.atan2(self.start.y - self.end.y, self.end.x - self.start.x)
+        self.angle = self.__calc_angle()
         v = vec3(self.length * math.cos(self.angle), self.length * math.sin(self.angle), 0)  
         return v
 
+    def __calc_angle(self):
+        angle = math.atan2(self.start.y - self.end.y, self.end.x - self.start.x)
+        print(angle)
+        return angle
+
+    def __recalculate_for_celestial(self):
+        if self.parent:
+            if isinstance(self.parent, CelestialObject):
+                origin = self.parent.position
+                self.start = vec3(origin.x, origin.y, 0)
+
+                endx = 0
+                endy = 0
+                if self.indcator_type == TYPE_VEL:
+                    endx = origin.x+self.parent.velocity.x/ARROW_TO_VEL_RATIO
+                    endy = origin.y+self.parent.velocity.y/ARROW_TO_VEL_RATIO
+                elif self.indcator_type == TYPE_ACCEL:
+                    endx = origin.x+self.parent.acceleration.x/ARROW_TO_ACC_RATIO
+                    endy = origin.y+self.parent.acceleration.y/ARROW_TO_ACC_RATIO
+
+                self.end = vec3(endx, endy, 0)
+
     def update(self, dt):
         super().update(dt)
+        
+        # self.__update_angle() # TODO: This recalculation might not be necessary here
+        
+        self.__recalculate_for_celestial()
+
         self.start += self.world_offset
         self.end += self.world_offset
 
     def draw(self, surface : pygame.Surface):
         super().draw(surface)
-        pygame.draw.line(surface, self.color, (self.start.x, self.start.y), (self.end.x, self.end.y), 2)    
+        # Draw the arrow line
+        pygame.draw.line(surface, self.color, (self.start.x, self.start.y), (self.end.x, self.end.y), self.thickness)    
 
+        # Draw the arrow head
+        arrow_points = self.__generate_arrowhead_method1(3)
+        pygame.draw.polygon(surface, self.color, arrow_points, 0)
+
+    def __arrow_head(self):
+        arrow_head = [
+            vec2(0, 2), vec2(-1, -2), vec2(1, -2)
+        ]
+        return arrow_head
+
+    def __generate_arrowhead_method1(self, scale) -> []:
+        arrow_points = []
+        z = vec3(0, 0, 1)
+        rads =  glm.radians(270) - self.__calc_angle()
+        for p in self.__arrow_head():
+            p = vec4(p.x, p.y, 0, 0)
+            p = p*scale
+            M = glm.rotate(mat4(1), rads, z)
+            p = M*p
+            p = vec2(p.x, p.y)
+            p = p+vec2(self.end.x, self.end.y)
+            arrow_points.append(p)
+
+        return arrow_points
+
+    def __generate_arrowhead_method2(self, scale) -> []:
+        arrow_points = []
+        rads = self.__calc_angle() + glm.radians(90)
+        degs = glm.degrees(rads)
+        for p in self.__arrow_head():
+            p = p*scale
+            p = p.rotate(-degs)
+            p = p+pygame.Vector2(self.end.x, self.end.y)
+            arrow_points.append(p)
+
+        return arrow_points
 
 class TextObject(TransientDrawEntity):
     def __init__(self, text, font : pygame.font, color):

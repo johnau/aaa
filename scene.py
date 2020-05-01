@@ -1,8 +1,9 @@
 from glm import vec2, vec3
 import pygame
 
-from constants import BACKGROUND_COLOR, CAM_MOVE_SPEED, CAM_ZOOM_AMOUNT
-from objects import CelestialObject, SpriteEntity, TransientDrawEntity, TextObject
+from constants import BACKGROUND_COLOR, CAM_MOVE_SPEED, CAM_ZOOM_AMOUNT, ZOOM_MIN, ZOOM_MAX, TYPE_ACCEL, TYPE_VEL
+from objects import CelestialObject, SpriteEntity, TransientDrawEntity, TextObject, VelocityArrow
+from containers import CelestialSpriteGroup
 
 class Camera():
     def __init__(self):
@@ -35,12 +36,16 @@ class Scene():
         self.camera.shift(vec3(0, -CAM_MOVE_SPEED, 0))
 
     def move_cam_out(self):
-        self.camera.shift(vec3(0, 0, -CAM_ZOOM_AMOUNT))
-        print("Zoom out")
+        if (self.camera.position.z > ZOOM_MIN):
+            self.camera.shift(vec3(0, 0, -CAM_ZOOM_AMOUNT))
+        else:
+            print("Can't zoom out further")
 
     def move_cam_in(self):
-        self.camera.shift(vec3(0, 0, CAM_ZOOM_AMOUNT))
-        print("Zoom in")
+        if (self.camera.position.z < ZOOM_MAX):
+            self.camera.shift(vec3(0, 0, CAM_ZOOM_AMOUNT))
+        else:
+            print("Can't zoom in further")
 
     def update(self, delta_time):
         # Update all sprites in the scene.content
@@ -58,10 +63,10 @@ class CelestialScene(Scene):
     def __init__(self, app):
         super().__init__(app)
 
-        self.celest_objs = pygame.sprite.Group()
+        self.celest_objs = CelestialSpriteGroup()
         self.transient_objs = []
         
-        self.__camera_pos_disp = TextObject('X: 0, Y: 0 | Zoom: 100%', self.app.font, (0,0,0))
+        self.__camera_pos_disp = TextObject('X: 0, Y: 0 | Zoom: 0%', self.app.font, (0,0,0))
 
     def add_new_celestial(self, new_celestial):
         # New celestial instance with world_offset
@@ -77,6 +82,13 @@ class CelestialScene(Scene):
         
         # Add to scene sprite.Group() for drawing
         self.content.add(new_celestial)
+
+        # Add vector arrows to for celestial
+        arr_accel = VelocityArrow(new_celestial.position, new_celestial, color=(200,0,0), indicator_type=TYPE_ACCEL, thickness=1)
+        arr_vel = VelocityArrow(new_celestial.position, new_celestial, color=(0,70,170), indicator_type=TYPE_VEL, thickness=1)
+
+        self.transient_objs.append(arr_accel)
+        self.transient_objs.append(arr_vel)
 
         return new_celestial
 
@@ -100,7 +112,7 @@ class CelestialScene(Scene):
         super().update(delta_time)
 
         # Update Camera Position Text Display
-        cam_text = f"X: {self.camera.position.x}, Y: {self.camera.position.y} | Zoom: {(self.camera.position.z+100)}%"
+        cam_text = f"X: {self.camera.position.x}, Y: {self.camera.position.y} | Zoom: {self.camera.position.z+100}%"
         self.__camera_pos_disp.text = cam_text
 
         # Call update() method of all sprites in the sprite.Group()
